@@ -1,13 +1,13 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE participants (
+CREATE TABLE IF NOT EXISTS participants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     employee_no TEXT,
@@ -15,7 +15,7 @@ CREATE TABLE participants (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE prizes (
+CREATE TABLE IF NOT EXISTS prizes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     quota INTEGER NOT NULL CHECK (quota > 0),
@@ -24,7 +24,7 @@ CREATE TABLE prizes (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE draw_sessions (
+CREATE TABLE IF NOT EXISTS draw_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     prize_id INTEGER NOT NULL,
     started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -32,7 +32,7 @@ CREATE TABLE draw_sessions (
     FOREIGN KEY (prize_id) REFERENCES prizes(id)
 );
 
-CREATE TABLE draw_records (
+CREATE TABLE IF NOT EXISTS draw_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
     participant_id INTEGER NOT NULL,
