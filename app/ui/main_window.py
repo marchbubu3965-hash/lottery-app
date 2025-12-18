@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from app.ui.history_window import HistoryWindow
 
 
 class MainWindow:
@@ -46,6 +47,15 @@ class MainWindow:
             command=self.start_lottery
         )
         start_btn.pack(pady=20)
+
+        history_btn = ttk.Button(
+            center_frame,
+            text="查看歷史中獎",
+            width=20,
+            command=self.open_history
+        )
+        history_btn.pack(pady=10)
+
 
         reset_btn = ttk.Button(
             center_frame,
@@ -99,3 +109,7 @@ class MainWindow:
         )
         if confirm:
             self.status_label.config(text="名單已重設（特別獎模式）")
+
+    def open_history(self):
+        HistoryWindow(self.root)
+
