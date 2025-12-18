@@ -1,208 +1,149 @@
 import random
-from datetime import datetime
 from typing import List, Dict
 
 from app.db.database import get_connection
+from app.services.participant_service import ParticipantService
 
 
 class LotteryService:
     """
-    抽籤核心服務（完整版本）
-    - 使用 prizes / draw_sessions / draw_records / participants
+    抽籤核心服務：
+    - 依獎項順序抽籤
+    - 建立 draw_session
+    - 寫入 draw_records
+    - 控制 participants.is_active
     """
 
-    # =========================
-    # 公開 API
-    # =========================
-    def run_full_lottery(self) -> List[Dict]:
+    def __init__(self):
+        self.participant_service = ParticipantService()
+
+    # ==================================================
+    # 對外主入口：執行整場抽獎
+    # ==================================================
+    def run_lottery(self) -> List[Dict]:
         """
-        依 prizes.draw_order 依序執行所有抽獎
+        依 prizes.draw_order 依序抽獎
+        回傳完整抽獎結果
         """
-        prizes = self._get_all_prizes_in_order()
-        results = []
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT id, name, quota, is_special
+            FROM prizes
+            ORDER BY draw_order
+        """)
+        prizes = cursor.fetchall()
+        conn.close()
+
+        all_results = []
 
         for prize in prizes:
-            result = self._draw_one_prize(prize)
-            results.append(result)
+            prize_result = self._draw_for_prize(
+                prize_id=prize["id"],
+                prize_name=prize["name"],
+                quota=prize["quota"],
+                is_special=prize["is_special"]
+            )
+            all_results.append(prize_result)
 
-        return results
+        return all_results
 
-    def draw_single_prize(self, prize_id: int) -> Dict:
+    # ==================================================
+    # 單一獎項抽籤
+    # ==================================================
+    def _draw_for_prize(
+        self,
+        prize_id: int,
+        prize_name: str,
+        quota: int,
+        is_special: int
+    ) -> Dict:
         """
-        只抽指定獎項（手動操作用）
+        對單一獎項進行抽籤
         """
-        prize = self._get_prize_by_id(prize_id)
-        if not prize:
-            raise RuntimeError("找不到指定獎項")
 
-        return self._draw_one_prize(prize)
+        # 特別獎：重置名單
+        if is_special:
+            self.participant_service.reset_all_participants()
 
-    # =========================
-    # 抽獎主流程
-    # =========================
-    def _draw_one_prize(self, prize) -> Dict:
-        """
-        抽單一獎項
-        """
-        if prize["is_special"]:
-            self._reset_participants()
+        # 建立抽籤場次
+        session_id = self._create_draw_session(prize_id)
 
-        session_id = self._create_draw_session(prize["id"])
+        # 取得可抽名單
+        candidates = self.participant_service.get_active_participants()
 
-        participants = self._get_active_participants()
-        if len(participants) < prize["quota"]:
-            raise RuntimeError(f"【{prize['name']}】可抽人數不足")
+        if not candidates:
+            return {
+                "prize": prize_name,
+                "winners": [],
+                "message": "無可抽名單"
+            }
 
-        winners = random.sample(participants, prize["quota"])
+        # 若人數不足，全部中獎
+        if len(candidates) <= quota:
+            selected = candidates
+        else:
+            selected = random.sample(candidates, quota)
 
-        for w in winners:
-            self._record_winner(session_id, w["id"])
-            self._mark_participant_inactive(w["id"])
+        winners = []
+
+        for participant in selected:
+            participant_id = participant["id"]
+
+            self._record_draw(session_id, participant_id)
+            self.participant_service.mark_as_selected(participant_id)
+
+            winners.append({
+                "id": participant_id,
+                "name": participant["name"]
+            })
 
         self._finish_draw_session(session_id)
 
         return {
-            "prize_id": prize["id"],
-            "prize_name": prize["name"],
-            "quota": prize["quota"],
-            "winners": [
-                {"id": w["id"], "name": w["name"]}
-                for w in winners
-            ]
+            "prize": prize_name,
+            "winners": winners
         }
 
-    # =========================
-    # Prize
-    # =========================
-    def _get_all_prizes_in_order(self):
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT id, name, quota, draw_order, is_special
-            FROM prizes
-            ORDER BY draw_order
-            """
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
-
-    def _get_prize_by_id(self, prize_id: int):
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT id, name, quota, draw_order, is_special
-            FROM prizes
-            WHERE id = ?
-            """,
-            (prize_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return row
-
-    # =========================
-    # Draw Session
-    # =========================
+    # ==================================================
+    # DB 操作（內部）
+    # ==================================================
     def _create_draw_session(self, prize_id: int) -> int:
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             INSERT INTO draw_sessions (prize_id)
             VALUES (?)
-            """,
-            (prize_id,)
-        )
-        session_id = cursor.lastrowid
+        """, (prize_id,))
 
+        session_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return session_id
+
+    def _record_draw(self, session_id: int, participant_id: int) -> None:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO draw_records (session_id, participant_id)
+            VALUES (?, ?)
+        """, (session_id, participant_id))
+
+        conn.commit()
+        conn.close()
 
     def _finish_draw_session(self, session_id: int) -> None:
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             UPDATE draw_sessions
-            SET finished_at = ?
+            SET finished_at = CURRENT_TIMESTAMP
             WHERE id = ?
-            """,
-            (datetime.now().isoformat(timespec="seconds"), session_id)
-        )
-
-        conn.commit()
-        conn.close()
-
-    # =========================
-    # Participants
-    # =========================
-    def _get_active_participants(self):
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT id, name
-            FROM participants
-            WHERE is_active = 1
-            """
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
-
-    def _mark_participant_inactive(self, participant_id: int) -> None:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE participants
-            SET is_active = 0
-            WHERE id = ?
-            """,
-            (participant_id,)
-        )
-
-        conn.commit()
-        conn.close()
-
-    def _reset_participants(self) -> None:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE participants
-            SET is_active = 1
-            """
-        )
-
-        conn.commit()
-        conn.close()
-
-    # =========================
-    # Draw Records
-    # =========================
-    def _record_winner(self, session_id: int, participant_id: int) -> None:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO draw_records (session_id, participant_id)
-            VALUES (?, ?)
-            """,
-            (session_id, participant_id)
-        )
+        """, (session_id,))
 
         conn.commit()
         conn.close()
