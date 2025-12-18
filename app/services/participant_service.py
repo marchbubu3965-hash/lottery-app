@@ -57,17 +57,25 @@ class ParticipantService:
         conn.commit()
         conn.close()
 
-    def get_all_participants(self) -> List[Tuple]:
+    def get_all_participants(self):
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            "SELECT id, name, is_active FROM participants ORDER BY id"
-        )
-        rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT
+                id,
+                name,
+                employee_no,
+                is_active,
+                created_at
+            FROM participants
+            ORDER BY id
+        """)
 
+        rows = cursor.fetchall()
         conn.close()
         return rows
+
 
     # =========================
     # 抽籤相關
@@ -114,11 +122,11 @@ class ParticipantService:
     # Excel 匯入
     # =========================
     def import_from_excel(self, file_path: str) -> int:
-        """
-        從 Excel (.xlsx) 匯入名單
-        Excel 格式：
-        | name |
-        """
+    
+    # 從 Excel 匯入 participants
+    # Excel 欄位：
+    # | name | employee_no |
+    
         try:
             import openpyxl
         except ImportError:
@@ -131,17 +139,31 @@ class ParticipantService:
         cursor = conn.cursor()
 
         count = 0
+
+        # 讀取 header
+        headers = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+        header_map = {h: i for i, h in enumerate(headers) if h}
+
+        if "name" not in header_map:
+            raise ValueError("Excel 必須包含 name 欄位")
+
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            name = row[0]
+            name = row[header_map["name"]]
+            employee_no = row[header_map.get("employee_no")]
+
             if not name:
                 continue
 
             cursor.execute(
-                "INSERT INTO participants (name) VALUES (?)",
-                (str(name).strip(),)
+                """
+                INSERT INTO participants (name, employee_no)
+                VALUES (?, ?)
+                """,
+                (str(name).strip(), str(employee_no).strip() if employee_no else None)
             )
             count += 1
 
         conn.commit()
         conn.close()
         return count
+
