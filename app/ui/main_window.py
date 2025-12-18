@@ -1,6 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from app.ui.history_window import HistoryWindow
+from app.ui.participants_window import ParticipantsWindow
+from app.ui.prizes_window import PrizesWindow
+
 
 
 class MainWindow:
@@ -66,6 +69,33 @@ class MainWindow:
         reset_btn.pack(pady=10)
 
         # =========================
+        # 查看資料
+        # =========================
+        view_frame = ttk.Frame(center_frame)
+        view_frame.pack(pady=10)
+
+        # ttk.Button(
+        #     view_frame,
+        #     text="查看名單",
+        #     width=18,
+        #     command=self.open_participants
+        # ).pack(pady=5)
+
+        ttk.Button(
+            left_frame,
+            text="名單管理",
+            command=lambda: ParticipantsWindow(self.root)
+        ).grid(row=3, column=0, columnspan=2, pady=10)
+
+
+        ttk.Button(
+            view_frame,
+            text="查看獎項",
+            width=18,
+            command=self.open_prizes
+        ).pack(pady=5)
+
+        # =========================
         # 下方：中獎結果
         # =========================
         result_frame = ttk.LabelFrame(self.root, text="中獎結果")
@@ -112,4 +142,10 @@ class MainWindow:
 
     def open_history(self):
         HistoryWindow(self.root)
+
+    def open_participants(self):
+        ParticipantsWindow(self.root)
+
+    def open_prizes(self):
+        PrizesWindow(self.root)
 

@@ -1,5 +1,6 @@
 from typing import List, Tuple
 from app.db.database import get_connection
+import sqlite3
 
 
 class PrizeService:
@@ -22,16 +23,30 @@ class PrizeService:
         conn.commit()
         conn.close()
 
-    def get_all_prizes(self) -> List[Tuple]:
+    def get_all_prizes(self):
         conn = get_connection()
-        cursor = conn.cursor()
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
 
-        cursor.execute("""
+        cur.execute("""
             SELECT id, name, quota, draw_order, is_special
             FROM prizes
             ORDER BY draw_order
         """)
 
-        rows = cursor.fetchall()
+        rows = cur.fetchall()
         conn.close()
         return rows
+
+    def update_prize(self, prize_id, name, quota, order, is_special):
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            UPDATE prizes
+            SET name = ?, quota = ?, draw_order = ?, is_special = ?
+            WHERE id = ?
+        """, (name, quota, order, is_special, prize_id))
+
+        conn.commit()
+        conn.close()
