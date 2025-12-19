@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk ,messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog
 from app.services.participant_service import ParticipantService
 
 
@@ -11,6 +11,8 @@ class ParticipantsWindow:
         self.win.resizable(False, False)
 
         self.service = ParticipantService()
+        self.selected_id = None  # ⭐ 一定要初始化
+
         self._build_ui()
         self._load_data()
 
@@ -56,10 +58,12 @@ class ParticipantsWindow:
         ttk.Button(btn_frame, text="修改", command=self.update).grid(row=0, column=1, padx=5)
         ttk.Button(btn_frame, text="刪除", command=self.delete).grid(row=0, column=2, padx=5)
         ttk.Button(btn_frame, text="切換啟用", command=self.toggle).grid(row=0, column=3, padx=5)
-        ttk.Button(btn_frame, text="Excel 匯入", command=self.import_excel)\
-            .grid(row=0, column=4, padx=5)
+        ttk.Button(btn_frame, text="Excel 匯入", command=self.import_excel).grid(row=0, column=4, padx=5)
 
     def _load_data(self):
+        # ⭐ 關鍵修正 1：重載時清空選取狀態
+        self.selected_id = None
+
         self.tree.delete(*self.tree.get_children())
         for row in self.service.get_all_participants():
             self.tree.insert(
@@ -74,64 +78,68 @@ class ParticipantsWindow:
             )
 
     def on_select(self, event):
-        item = self.tree.item(self.tree.selection()[0])
-        self.selected_id = item["values"][0]
+        # ⭐ 關鍵修正 2：selection 防呆
+        selected = self.tree.selection()
+        if not selected:
+            return
+
+        item = self.tree.item(selected[0])
+        values = item.get("values")
+        if not values:
+            return
+
+        self.selected_id = values[0]
 
         self.name_entry.delete(0, tk.END)
-        self.name_entry.insert(0, item["values"][1])
+        self.name_entry.insert(0, values[1])
 
         self.emp_entry.delete(0, tk.END)
-        self.emp_entry.insert(0, item["values"][2] or "")
+        self.emp_entry.insert(0, values[2] or "")
 
     def add(self):
-        if not self.name_entry.get():
+        if not self.name_entry.get().strip():
             messagebox.showwarning("錯誤", "姓名不可空白")
             return
 
         self.service.add(
-            self.name_entry.get(),
-            self.emp_entry.get()
+            self.name_entry.get().strip(),
+            self.emp_entry.get().strip()
         )
         self._load_data()
 
     def update(self):
         if not self.selected_id:
+            messagebox.showwarning("提示", "請先選擇一筆資料")
             return
 
         self.service.update(
             self.selected_id,
-            self.name_entry.get(),
-            self.emp_entry.get()
+            self.name_entry.get().strip(),
+            self.emp_entry.get().strip()
         )
         self._load_data()
 
     def delete(self):
         if not self.selected_id:
+            messagebox.showwarning("提示", "請先選擇一筆資料")
             return
 
         if messagebox.askyesno("確認", "確定刪除？"):
             self.service.delete(self.selected_id)
             self._load_data()
 
-    # def toggle_active(self):
-    #     selected = self.tree.selection()
-    #     if not selected:
-    #         messagebox.showwarning("提示", "請選擇一筆資料")
-    #         return
-
-    #     item = self.tree.item(selected[0])
-    #     pid, _, _, active_text = item["values"]
-
-    #     new_status = active_text != "是"
-    #     self.service.set_active(pid, new_status)
-    #     self._load_data()
-
     def toggle(self):
         if not self.selected_id:
+            messagebox.showwarning("提示", "請先選擇一筆資料")
             return
 
-        item = self.tree.item(self.tree.selection()[0])
+        selected = self.tree.selection()
+        if not selected:
+            return
+
+        item = self.tree.item(selected[0])
         active = item["values"][3] == "是"
+
         self.service.set_active(self.selected_id, not active)
         self._load_data()
 

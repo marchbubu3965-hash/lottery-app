@@ -19,21 +19,21 @@ class MainWindow:
         # =========================
         # 左側：獎項設定
         # =========================
-        left_frame = ttk.LabelFrame(self.root, text="獎項設定")
+        left_frame = ttk.LabelFrame(self.root, text="管理設定")
         left_frame.place(x=20, y=20, width=400, height=260)
 
-        ttk.Label(left_frame, text="獎項名稱").grid(row=0, column=0, padx=10, pady=10)
-        self.prize_name_entry = ttk.Entry(left_frame, width=20)
-        self.prize_name_entry.grid(row=0, column=1)
+        # ttk.Label(left_frame, text="獎項名稱").grid(row=0, column=0, padx=10, pady=10)
+        # self.prize_name_entry = ttk.Entry(left_frame, width=20)
+        # self.prize_name_entry.grid(row=0, column=1)
 
-        ttk.Label(left_frame, text="名額").grid(row=1, column=0, padx=10, pady=10)
-        self.prize_quota_entry = ttk.Entry(left_frame, width=20)
-        self.prize_quota_entry.grid(row=1, column=1)
+        # ttk.Label(left_frame, text="名額").grid(row=1, column=0, padx=10, pady=10)
+        # self.prize_quota_entry = ttk.Entry(left_frame, width=20)
+        # self.prize_quota_entry.grid(row=1, column=1)
 
         add_prize_btn = ttk.Button(
             left_frame,
-            text="新增獎項",
-            command=self.add_prize
+            text="獎項管理",
+            command=self.open_prizes
         )
         add_prize_btn.grid(row=2, column=0, columnspan=2, pady=15)
 
@@ -88,12 +88,12 @@ class MainWindow:
         ).grid(row=3, column=0, columnspan=2, pady=10)
 
 
-        ttk.Button(
-            view_frame,
-            text="查看獎項",
-            width=18,
-            command=self.open_prizes
-        ).pack(pady=5)
+        # ttk.Button(
+        #     left_frame,
+        #     text="獎項管理",
+        #     width=18,
+        #     command=self.open_prizes
+        # ).pack(pady=5)
 
         # =========================
         # 下方：中獎結果
@@ -118,15 +118,15 @@ class MainWindow:
     # =========================
     # 行為（暫時是骨架）
     # =========================
-    def add_prize(self):
-        name = self.prize_name_entry.get().strip()
-        quota = self.prize_quota_entry.get().strip()
+    # def add_prize(self):
+    #     name = self.prize_name_entry.get().strip()
+    #     quota = self.prize_quota_entry.get().strip()
 
-        if not name or not quota:
-            messagebox.showwarning("警告", "請輸入獎項名稱與名額")
-            return
+    #     if not name or not quota:
+    #         messagebox.showwarning("警告", "請輸入獎項名稱與名額")
+    #         return
 
-        self.status_label.config(text=f"已新增獎項：{name}（名額 {quota}）")
+    #     self.status_label.config(text=f"已新增獎項：{name}（名額 {quota}）")
 
     def start_lottery(self):
         messagebox.showinfo("提示", "抽籤功能尚未實作")
