@@ -3,6 +3,9 @@ from tkinter import ttk, messagebox
 from app.ui.history_window import HistoryWindow
 from app.ui.participants_window import ParticipantsWindow
 from app.ui.prizes_window import PrizesWindow
+from app.services.lottery_service import LotteryService
+from app.services.participant_service import ParticipantService
+from app.services.admin_service import AdminService
 
 
 
@@ -21,14 +24,6 @@ class MainWindow:
         # =========================
         left_frame = ttk.LabelFrame(self.root, text="管理設定")
         left_frame.place(x=20, y=20, width=400, height=260)
-
-        # ttk.Label(left_frame, text="獎項名稱").grid(row=0, column=0, padx=10, pady=10)
-        # self.prize_name_entry = ttk.Entry(left_frame, width=20)
-        # self.prize_name_entry.grid(row=0, column=1)
-
-        # ttk.Label(left_frame, text="名額").grid(row=1, column=0, padx=10, pady=10)
-        # self.prize_quota_entry = ttk.Entry(left_frame, width=20)
-        # self.prize_quota_entry.grid(row=1, column=1)
 
         add_prize_btn = ttk.Button(
             left_frame,
@@ -74,26 +69,18 @@ class MainWindow:
         view_frame = ttk.Frame(center_frame)
         view_frame.pack(pady=10)
 
-        # ttk.Button(
-        #     view_frame,
-        #     text="查看名單",
-        #     width=18,
-        #     command=self.open_participants
-        # ).pack(pady=5)
-
         ttk.Button(
             left_frame,
             text="名單管理",
             command=lambda: ParticipantsWindow(self.root)
         ).grid(row=3, column=0, columnspan=2, pady=10)
 
-
-        # ttk.Button(
-        #     left_frame,
-        #     text="獎項管理",
-        #     width=18,
-        #     command=self.open_prizes
-        # ).pack(pady=5)
+        reset_btn = ttk.Button(
+            self.root,
+            text="⚠ 清空中獎名單（測試用）",
+            command=self.reset_lottery_results
+        )
+        reset_btn.place(x=650, y=260, width=200)
 
         # =========================
         # 下方：中獎結果
@@ -115,30 +102,81 @@ class MainWindow:
         )
         self.status_label.place(x=0, y=570, width=900)
 
-    # =========================
-    # 行為（暫時是骨架）
-    # =========================
-    # def add_prize(self):
-    #     name = self.prize_name_entry.get().strip()
-    #     quota = self.prize_quota_entry.get().strip()
-
-    #     if not name or not quota:
-    #         messagebox.showwarning("警告", "請輸入獎項名稱與名額")
-    #         return
-
-    #     self.status_label.config(text=f"已新增獎項：{name}（名額 {quota}）")
-
     def start_lottery(self):
-        messagebox.showinfo("提示", "抽籤功能尚未實作")
-        self.status_label.config(text="開始抽籤")
+        svc = LotteryService()
+
+        try:
+            results = svc.run_lottery()
+        except Exception as e:
+            messagebox.showerror("錯誤", str(e))
+            return
+
+        self.result_listbox.delete(0, tk.END)
+
+        for prize_result in results:
+            prize_name = prize_result["prize"]
+            is_special = prize_result.get("is_special", 0)
+            tag = "🎯 特別獎" if is_special else "一般獎"
+
+            winners = prize_result["winners"]
+
+            if not winners:
+                self.result_listbox.insert(
+                    tk.END,
+                    f"[{prize_name}] 無中獎者"
+                )
+                continue
+
+            for w in winners:
+                self.result_listbox.insert(
+                    tk.END,
+                    f"[{prize_name}] {w['name']} - {tag}"
+                )
+
+        self.status_label.config(text="抽籤完成")
 
     def reset_candidates(self):
         confirm = messagebox.askyesno(
             "確認",
-            "此操作將重設所有名單，是否繼續？"
+            "此操作將重設所有名單為『可抽狀態』，\n歷史中獎紀錄不會被刪除。\n\n是否繼續？"
         )
-        if confirm:
-            self.status_label.config(text="名單已重設（特別獎模式）")
+        if not confirm:
+            return
+
+        try:
+            service = ParticipantService()
+            count = service.reset_all_participants()
+
+            self.status_label.config(
+                text=f"名單已重設，共 {count} 人恢復可抽狀態"
+            )
+            messagebox.showinfo(
+                "完成",
+                f"已成功重設 {count} 筆名單"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "錯誤",
+                f"重設名單失敗：\n{e}"
+            )
+    def reset_lottery_results(self):
+        confirm = messagebox.askyesno(
+            "⚠ 危險操作",
+            "此操作將【永久刪除】所有中獎紀錄與抽獎場次，\n"
+            "並重設名單狀態。\n\n"
+            "⚠ 僅限測試使用，是否繼續？"
+        )
+        if not confirm:
+            return
+
+        try:
+            AdminService().reset_lottery_data()
+            self.result_listbox.delete(0, tk.END)
+            self.status_label.config(text="抽獎資料已全部清空")
+            messagebox.showinfo("完成", "中獎名單已清空")
+        except Exception as e:
+            messagebox.showerror("錯誤", str(e))
 
     def open_history(self):
         HistoryWindow(self.root)
