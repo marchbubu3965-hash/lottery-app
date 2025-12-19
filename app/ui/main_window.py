@@ -116,10 +116,10 @@ class MainWindow:
         for prize_result in results:
             prize_name = prize_result["prize"]
             is_special = prize_result.get("is_special", 0)
-            tag = "🎯 特別獎" if is_special else "一般獎"
 
-            winners = prize_result["winners"]
+            winners = prize_result.get("winners", [])
 
+            # 無中獎者
             if not winners:
                 self.result_listbox.insert(
                     tk.END,
@@ -127,10 +127,14 @@ class MainWindow:
                 )
                 continue
 
+            # 中獎者
             for w in winners:
+                name = w.get("name", "")
+                emp_no = w.get("employee_no", "")
+
                 self.result_listbox.insert(
                     tk.END,
-                    f"[{prize_name}] {w['name']} - {tag}"
+                    f"[{prize_name}] {name}（{emp_no}) "
                 )
 
         self.status_label.config(text="抽籤完成")

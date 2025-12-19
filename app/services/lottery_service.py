@@ -1,31 +1,27 @@
 import random
-from typing import List, Dict
+import sqlite3
+from typing import List, Dict, Any
 
 from app.db.database import get_connection
-from app.services.participant_service import ParticipantService
 
 
 class LotteryService:
     """
-    抽籤核心服務：
-    - 依獎項順序抽籤
-    - 建立 draw_session
-    - 寫入 draw_records
-    - 控制 participants.is_active
+    抽籤核心服務（正式完成版）：
+    - 依 prizes.draw_order 依序抽獎
+    - 每個獎項一個 DB transaction
+    - 正確寫入 draw_sessions / draw_records
+    - 一般獎項會停用 participant
+    - 特別獎不影響 is_active
+    - 回傳完整可供 GUI / Excel 使用的資料
     """
 
-    def __init__(self):
-        self.participant_service = ParticipantService()
-
     # ==================================================
-    # 對外主入口：執行整場抽獎
+    # 對外主入口
     # ==================================================
-    def run_lottery(self) -> List[Dict]:
-        """
-        依 prizes.draw_order 依序抽獎
-        回傳完整抽獎結果
-        """
+    def run_lottery(self) -> List[Dict[str, Any]]:
         conn = get_connection()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -34,116 +30,117 @@ class LotteryService:
             ORDER BY draw_order
         """)
         prizes = cursor.fetchall()
-        conn.close()
 
-        all_results = []
+        results: List[Dict[str, Any]] = []
 
         for prize in prizes:
-            prize_result = self._draw_for_prize(
-                prize_id=prize["id"],
-                prize_name=prize["name"],
-                quota=prize["quota"],
-                is_special=prize["is_special"]
-            )
-            all_results.append(prize_result)
+            result = self._draw_for_prize(conn, prize)
+            results.append(result)
 
-        return all_results
+        conn.close()
+        return results
 
     # ==================================================
-    # 單一獎項抽籤
+    # 單一獎項抽籤（一個 transaction）
     # ==================================================
     def _draw_for_prize(
         self,
-        prize_id: int,
-        prize_name: str,
-        quota: int,
-        is_special: int
-    ) -> Dict:
-        """
-        對單一獎項進行抽籤
-        """
+        conn: sqlite3.Connection,
+        prize: sqlite3.Row
+    ) -> Dict[str, Any]:
 
-        # 特別獎：重置名單
-        if is_special:
-            self.participant_service.reset_all_participants()
+        cursor = conn.cursor()
 
-        # 建立抽籤場次
-        session_id = self._create_draw_session(prize_id)
+        prize_id = prize["id"]
+        prize_name = prize["name"]
+        quota = prize["quota"]
+        is_special = prize["is_special"]
 
-        # 取得可抽名單
-        candidates = self.participant_service.get_active_participants()
+        try:
+            # ---------- 建立抽籤場次 ----------
+            cursor.execute("""
+                INSERT INTO draw_sessions (prize_id)
+                VALUES (?)
+            """, (prize_id,))
+            session_id = cursor.lastrowid
 
-        if not candidates:
+            # ---------- 取得候選名單 ----------
+            if is_special:
+                cursor.execute("""
+                    SELECT id, name, employee_no
+                    FROM participants
+                """)
+            else:
+                cursor.execute("""
+                    SELECT id, name, employee_no
+                    FROM participants
+                    WHERE is_active = 1
+                """)
+
+            candidates = cursor.fetchall()
+
+            if not candidates:
+                conn.commit()
+                return {
+                    "session_id": session_id,
+                    "prize": prize_name,
+                    "is_special": is_special,
+                    "winners": [],
+                    "message": "無可抽名單"
+                }
+
+            # ---------- 抽籤 ----------
+            selected = random.sample(
+                candidates,
+                min(quota, len(candidates))
+            )
+
+            winners: List[Dict[str, Any]] = []
+
+            for p in selected:
+                try:
+                    cursor.execute("""
+                        INSERT INTO draw_records (session_id, participant_id, drawn_at)
+                        VALUES (?, ?, datetime('now', '+8 hours'))
+                    """, (session_id, p["id"]))
+                except sqlite3.IntegrityError:
+                    continue
+
+                # 一般獎項 → 停用
+                if not is_special:
+                    cursor.execute("""
+                        UPDATE participants
+                        SET is_active = 0
+                        WHERE id = ?
+                    """, (p["id"],))
+
+                winners.append({
+                    "id": p["id"],
+                    "name": p["name"],
+                    "employee_no": p["employee_no"] or ""
+                })
+
+            # ---------- 結束場次 ----------
+            cursor.execute("""
+                UPDATE draw_sessions
+                SET finished_at = datetime('now', '+8 hours')
+                WHERE id = ?
+            """, (session_id,))
+
+            conn.commit()
+
             return {
+                "session_id": session_id,
                 "prize": prize_name,
-                "winners": [],
-                "message": "無可抽名單"
+                "is_special": is_special,
+                "winners": winners,
+                "message": (
+                    "人數不足，全部中獎"
+                    if len(candidates) < quota
+                    else ""
+                )
             }
 
-        # 若人數不足，全部中獎
-        if len(candidates) <= quota:
-            selected = candidates
-        else:
-            selected = random.sample(candidates, quota)
-
-        winners = []
-
-        for participant in selected:
-            participant_id = participant["id"]
-
-            self._record_draw(session_id, participant_id)
-            self.participant_service.mark_as_selected(participant_id)
-
-            winners.append({
-                "id": participant_id,
-                "name": participant["name"]
-            })
-
-        self._finish_draw_session(session_id)
-
-        return {
-            "prize": prize_name,
-            "winners": winners
-        }
-
-    # ==================================================
-    # DB 操作（內部）
-    # ==================================================
-    def _create_draw_session(self, prize_id: int) -> int:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            INSERT INTO draw_sessions (prize_id)
-            VALUES (?)
-        """, (prize_id,))
-
-        session_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return session_id
-
-    def _record_draw(self, session_id: int, participant_id: int) -> None:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            INSERT INTO draw_records (session_id, participant_id)
-            VALUES (?, ?)
-        """, (session_id, participant_id))
-
-        conn.commit()
-        conn.close()
-
-    def _finish_draw_session(self, session_id: int) -> None:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            UPDATE draw_sessions
-            SET finished_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (session_id,))
-
-        conn.commit()
-        conn.close()
+        except Exception:
+            conn.rollback()
+            raise
