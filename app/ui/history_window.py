@@ -41,7 +41,7 @@ class HistoryWindow(tk.Toplevel):
 
         self.tree.tag_configure(
             "special",
-            background="#FFF2CC"  # 淡黃色（特別獎）
+            foreground="red"
         )
 
         self.tree.heading("prize", text="獎項")

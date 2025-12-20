@@ -6,6 +6,8 @@ from app.ui.prizes_window import PrizesWindow
 from app.services.lottery_service import LotteryService
 from app.services.participant_service import ParticipantService
 from app.services.admin_service import AdminService
+import sys
+
 
 
 
@@ -15,6 +17,10 @@ class MainWindow:
         self.root.title("抽籤系統")
         self.root.geometry("900x600")
         self.root.resizable(False, False)
+        self._lottery_results = []
+        self._current_prize_index = 0
+        self._animation_lines = []
+        self._animation_index = 0
 
         self._build_ui()
 
@@ -45,6 +51,15 @@ class MainWindow:
             command=self.start_lottery
         )
         start_btn.pack(pady=20)
+
+        self.next_btn = ttk.Button(
+            center_frame,
+            text="繼續下一個獎項",
+            width=20,
+            command=self.start_lottery,
+            state="disabled"   # 預設不可按
+        )
+        self.next_btn.pack(pady=5)
 
         history_btn = ttk.Button(
             center_frame,
@@ -88,7 +103,15 @@ class MainWindow:
         result_frame = ttk.LabelFrame(self.root, text="中獎結果")
         result_frame.place(x=20, y=300, width=830, height=230)
 
-        self.result_listbox = tk.Listbox(result_frame, font=("Arial", 12))
+        self.result_listbox = tk.Listbox(
+            result_frame,
+            font=("Arial", 14),
+            bg="black",
+            fg="white",          # 白字
+            selectbackground="#444444",
+            selectforeground="white"
+        )
+
         self.result_listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # =========================
@@ -103,41 +126,93 @@ class MainWindow:
         self.status_label.place(x=0, y=570, width=900)
 
     def start_lottery(self):
-        svc = LotteryService()
+        # 第一次按 → 真正執行抽籤
+        if not self._lottery_results:
+            self._lock_ui()  # 立刻鎖，避免重複觸發
 
-        try:
-            results = svc.run_lottery()
-        except Exception as e:
-            messagebox.showerror("錯誤", str(e))
+            svc = LotteryService()
+            try:
+                self._lottery_results = svc.run_lottery()
+            except Exception as e:
+                self._unlock_ui()
+                messagebox.showerror("錯誤", str(e))
+                return
+
+            self._current_prize_index = 0
+            self.result_listbox.delete(0, tk.END)
+
+        # 如果還有獎項沒抽
+        if self._current_prize_index < len(self._lottery_results):
+            self._lock_ui()              # 每個獎項開始前鎖 UI
+            self._start_next_prize()
+        else:
+            self._unlock_ui()
+            messagebox.showinfo("完成", "所有獎項已抽完")
+            self.status_label.config(text="抽籤完成")
+
+
+    def _start_next_prize(self):
+        prize_result = self._lottery_results[self._current_prize_index]
+
+        prize_name = prize_result["prize"]
+        is_special = prize_result.get("is_special", 0)
+        tag = "🎯 特別獎" if is_special else "一般獎"
+
+        winners = prize_result.get("winners", [])
+
+        self._animation_lines = []
+        self._animation_index = 0
+
+        # 顯示獎項標題
+        self._animation_lines.append(f"=== {prize_name}（{tag}）===")
+
+        if not winners:
+            self._animation_lines.append("無中獎者")
+        else:
+            for w in winners:
+                self._animation_lines.append(
+                    f"{w['name']}（{w['employee_no']}）"
+                )
+
+        self.status_label.config(text=f"抽籤中：{prize_name}")
+        self._show_next_line()
+
+    def _show_next_line(self):
+        if self._animation_index >= len(self._animation_lines):
+            self._current_prize_index += 1
+
+            # ===== 判斷是否全部抽完 =====
+            if self._current_prize_index >= len(self._lottery_results):
+                self.next_btn.state(["disabled"])
+                self._unlock_ui()
+                self.status_label.config(text="🎉 抽籤完成")
+                messagebox.showinfo("完成", "所有獎項已抽完")
+            else:
+                self.next_btn.state(["!disabled"])
+                self.status_label.config(text="請按『繼續下一個獎項』")
+
             return
 
-        self.result_listbox.delete(0, tk.END)
+        line = self._animation_lines[self._animation_index]
+        index = self.result_listbox.size()
+        self.result_listbox.insert(tk.END, line)
+        self.result_listbox.see(tk.END)
 
-        for prize_result in results:
-            prize_name = prize_result["prize"]
-            is_special = prize_result.get("is_special", 0)
+        if "🎯 特別獎" in line:
+            self.result_listbox.itemconfig(index, fg="red")
+        else:
+            self.result_listbox.itemconfig(index, fg="white")
 
-            winners = prize_result.get("winners", [])
+        # 音效、高亮動畫
+        self._play_sound()
+        self.result_listbox.itemconfig(index, bg="#FFF2CC")
+        self.root.after(
+            300,
+            lambda i=index: self.result_listbox.itemconfig(i, bg="black")
+        )
 
-            # 無中獎者
-            if not winners:
-                self.result_listbox.insert(
-                    tk.END,
-                    f"[{prize_name}] 無中獎者"
-                )
-                continue
-
-            # 中獎者
-            for w in winners:
-                name = w.get("name", "")
-                emp_no = w.get("employee_no", "")
-
-                self.result_listbox.insert(
-                    tk.END,
-                    f"[{prize_name}] {name}（{emp_no}) "
-                )
-
-        self.status_label.config(text="抽籤完成")
+        self._animation_index += 1
+        self.root.after(500, self._show_next_line)
 
     def reset_candidates(self):
         confirm = messagebox.askyesno(
@@ -176,11 +251,26 @@ class MainWindow:
 
         try:
             AdminService().reset_lottery_data()
+            self._reset_lottery_state()
             self.result_listbox.delete(0, tk.END)
-            self.status_label.config(text="抽獎資料已全部清空")
             messagebox.showinfo("完成", "中獎名單已清空")
         except Exception as e:
             messagebox.showerror("錯誤", str(e))
+
+    def _reset_lottery_state(self):
+        # 抽籤流程狀態
+        self._lottery_results = []
+        self._current_prize_index = 0
+        self._animation_lines = []
+        self._animation_index = 0
+
+        # UI
+        self.result_listbox.delete(0, tk.END)
+        self.next_btn.state(["disabled"])
+        self._unlock_ui()
+
+        self.status_label.config(text="系統已重設，請重新開始抽籤")
+
 
     def open_history(self):
         HistoryWindow(self.root)
@@ -190,4 +280,30 @@ class MainWindow:
 
     def open_prizes(self):
         PrizesWindow(self.root)
+
+    def _lock_ui(self):
+        self._set_buttons_state(self.root, "disabled")
+
+    def _unlock_ui(self):
+        self._set_buttons_state(self.root, "!disabled")
+
+    def _set_buttons_state(self, widget, state):
+        for child in widget.winfo_children():
+            if isinstance(child, ttk.Button):
+                # 👉 排除「繼續下一個獎項」
+                if child is self.next_btn:
+                    continue
+                child.state([state])
+            else:
+                self._set_buttons_state(child, state)
+
+    def _play_sound(self):
+        try:
+            if sys.platform.startswith("win"):
+                import winsound
+                winsound.Beep(1200, 120)  # 頻率, 毫秒
+            else:
+                self.root.bell()
+        except Exception:
+            pass
 
