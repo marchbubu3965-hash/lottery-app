@@ -7,13 +7,11 @@ from app.db.database import get_connection
 
 class LotteryService:
     """
-    抽籤核心服務（正式完成版）：
-    - 依 prizes.draw_order 依序抽獎
-    - 每個獎項一個 DB transaction
-    - 正確寫入 draw_sessions / draw_records
-    - 一般獎項會停用 participant
-    - 特別獎不影響 is_active
-    - 回傳完整可供 GUI / Excel 使用的資料
+    抽籤核心服務（修正版）：
+    - 同一獎項內「絕不重複中獎」
+    - 一般獎：中獎即停用 participant
+    - 特別獎：不影響 is_active
+    - 每個獎項一個 transaction
     """
 
     # ==================================================
@@ -41,7 +39,7 @@ class LotteryService:
         return results
 
     # ==================================================
-    # 單一獎項抽籤（一個 transaction）
+    # 單一獎項抽籤
     # ==================================================
     def _draw_for_prize(
         self,
@@ -77,7 +75,7 @@ class LotteryService:
                     WHERE is_active = 1
                 """)
 
-            candidates = cursor.fetchall()
+            candidates = list(cursor.fetchall())
 
             if not candidates:
                 conn.commit()
@@ -89,22 +87,18 @@ class LotteryService:
                     "message": "無可抽名單"
                 }
 
-            # ---------- 抽籤 ----------
-            selected = random.sample(
-                candidates,
-                min(quota, len(candidates))
-            )
-
+            # ---------- 抽籤（不重複） ----------
+            remaining = candidates.copy()
             winners: List[Dict[str, Any]] = []
 
-            for p in selected:
-                try:
-                    cursor.execute("""
-                        INSERT INTO draw_records (session_id, participant_id, drawn_at)
-                        VALUES (?, ?, datetime('now', '+8 hours'))
-                    """, (session_id, p["id"]))
-                except sqlite3.IntegrityError:
-                    continue
+            while remaining and len(winners) < quota:
+                p = random.choice(remaining)
+                remaining.remove(p)  # ⚠️ 立刻移除，避免重複
+
+                cursor.execute("""
+                    INSERT INTO draw_records (session_id, participant_id, drawn_at)
+                    VALUES (?, ?, datetime('now', '+8 hours'))
+                """, (session_id, p["id"]))
 
                 # 一般獎項 → 停用
                 if not is_special:

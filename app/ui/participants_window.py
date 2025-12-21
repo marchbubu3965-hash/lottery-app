@@ -11,18 +11,19 @@ class ParticipantsWindow:
         self.win.resizable(False, False)
 
         self.service = ParticipantService()
-        self.selected_id = None  # ⭐ 一定要初始化
+        self.selected_id = None  # 單筆操作用（修改 / 啟用）
 
         self._build_ui()
         self._load_data()
 
     def _build_ui(self):
-        # ===== TreeView =====
+        # ===== TreeView（開啟多選）=====
         self.tree = ttk.Treeview(
             self.win,
             columns=("id", "name", "employee_no", "active"),
             show="headings",
-            height=15
+            height=15,
+            selectmode="extended"  # ⭐ 關鍵：允許多選
         )
 
         for col, text, width in [
@@ -56,15 +57,14 @@ class ParticipantsWindow:
 
         ttk.Button(btn_frame, text="新增", command=self.add).grid(row=0, column=0, padx=5)
         ttk.Button(btn_frame, text="修改", command=self.update).grid(row=0, column=1, padx=5)
-        ttk.Button(btn_frame, text="刪除", command=self.delete).grid(row=0, column=2, padx=5)
+        ttk.Button(btn_frame, text="刪除（可多選）", command=self.delete).grid(row=0, column=2, padx=5)
         ttk.Button(btn_frame, text="切換啟用", command=self.toggle).grid(row=0, column=3, padx=5)
         ttk.Button(btn_frame, text="Excel 匯入", command=self.import_excel).grid(row=0, column=4, padx=5)
 
     def _load_data(self):
-        # ⭐ 關鍵修正 1：重載時清空選取狀態
         self.selected_id = None
-
         self.tree.delete(*self.tree.get_children())
+
         for row in self.service.get_all_participants():
             self.tree.insert(
                 "",
@@ -78,11 +78,12 @@ class ParticipantsWindow:
             )
 
     def on_select(self, event):
-        # ⭐ 關鍵修正 2：selection 防呆
         selected = self.tree.selection()
         if not selected:
+            self.selected_id = None
             return
 
+        # ⭐ 只用第一筆做「編輯用途」
         item = self.tree.item(selected[0])
         values = item.get("values")
         if not values:
@@ -120,13 +121,26 @@ class ParticipantsWindow:
         self._load_data()
 
     def delete(self):
-        if not self.selected_id:
-            messagebox.showwarning("提示", "請先選擇一筆資料")
+        selected_items = self.tree.selection()
+        if not selected_items:
+            messagebox.showwarning("提示", "請至少選擇一筆資料")
             return
 
-        if messagebox.askyesno("確認", "確定刪除？"):
-            self.service.delete(self.selected_id)
-            self._load_data()
+        ids = []
+        for item_id in selected_items:
+            values = self.tree.item(item_id, "values")
+            ids.append(values[0])
+
+        if not messagebox.askyesno(
+            "確認刪除",
+            f"確定刪除 {len(ids)} 筆名單？"
+        ):
+            return
+
+        for pid in ids:
+            self.service.delete(pid)
+
+        self._load_data()
 
     def toggle(self):
         if not self.selected_id:
