@@ -3,17 +3,19 @@ from tkinter import ttk, messagebox
 from enum import Enum, auto
 import sys
 
-from app.ui.history_window import HistoryWindow
-from app.ui.participants_window import ParticipantsWindow
-from app.ui.prizes_window import PrizesWindow
 from app.services.lottery_service import LotteryService
 from app.services.participant_service import ParticipantService
 from app.services.admin_service import AdminService
 
+from app.ui.history_window import HistoryWindow
+from app.ui.participants_window import ParticipantsWindow
+from app.ui.prizes_window import PrizesWindow
+from app.ui.special_wheel_window import SpecialWheelWindow
 
-# =========================
-# 狀態機定義
-# =========================
+
+# ==================================================
+# 狀態機
+# ==================================================
 class LotteryState(Enum):
     IDLE = auto()
     RUNNING = auto()
@@ -22,18 +24,25 @@ class LotteryState(Enum):
     FINISHED = auto()
 
 
+# ==================================================
+# 主視窗
+# ==================================================
 class MainWindow:
-    def __init__(self, root):
+    def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("抽籤系統")
         self.root.geometry("900x600")
         self.root.resizable(False, False)
 
+        # 狀態
         self.state = LotteryState.IDLE
         self._after_id = None
 
+        # 抽籤資料
         self._lottery_results = []
         self._current_prize_index = 0
+
+        # 動畫
         self._animation_lines = []
         self._animation_index = 0
 
@@ -41,79 +50,60 @@ class MainWindow:
         self._sync_ui_with_state()
 
     # ==================================================
-    # UI
+    # UI 建立
     # ==================================================
     def _build_ui(self):
-        # 左側
-        left_frame = ttk.LabelFrame(self.root, text="管理設定")
-        left_frame.place(x=20, y=20, width=400, height=260)
+        # 左側管理
+        left = ttk.LabelFrame(self.root, text="管理設定")
+        left.place(x=20, y=20, width=400, height=260)
 
-        ttk.Button(
-            left_frame,
-            text="獎項管理",
-            command=self.open_prizes
-        ).grid(row=0, column=0, columnspan=2, pady=15)
+        ttk.Button(left, text="獎項管理", command=self.open_prizes)\
+            .pack(pady=15)
 
-        ttk.Button(
-            left_frame,
-            text="名單管理",
-            command=lambda: ParticipantsWindow(self.root)
-        ).grid(row=1, column=0, columnspan=2, pady=10)
+        ttk.Button(left, text="名單管理",
+                   command=lambda: ParticipantsWindow(self.root))\
+            .pack(pady=10)
 
-        # 中央
-        center_frame = ttk.LabelFrame(self.root, text="抽籤控制")
-        center_frame.place(x=450, y=20, width=400, height=260)
+        # 中央控制
+        center = ttk.LabelFrame(self.root, text="抽籤控制")
+        center.place(x=450, y=20, width=400, height=260)
 
-        ttk.Button(
-            center_frame,
-            text="開始抽籤",
-            width=25,
-            command=self.start_lottery
-        ).pack(pady=10)
+        self.start_btn = ttk.Button(
+            center, text="開始抽籤", width=25, command=self.start_lottery
+        )
+        self.start_btn.pack(pady=10)
 
         self.next_btn = ttk.Button(
-            center_frame,
-            text="繼續下一個獎項",
-            width=25,
-            command=self.next_prize
+            center, text="繼續下一個獎項", width=25, command=self.next_prize
         )
         self.next_btn.pack(pady=5)
 
         self.pause_btn = ttk.Button(
-            center_frame,
-            text="暫停",
-            width=25,
-            command=self.toggle_pause
+            center, text="暫停", width=25, command=self.toggle_pause
         )
         self.pause_btn.pack(pady=5)
 
         self.history_btn = ttk.Button(
-            center_frame,
-            text="查看歷史中獎",
-            width=25,
-            command=self.open_history
+            center, text="查看歷史中獎", width=25, command=self.open_history
         )
         self.history_btn.pack(pady=10)
 
         ttk.Button(
-            center_frame,
-            text="重設名單（特別獎）",
-            width=25,
+            center, text="重設名單（特別獎）", width=25,
             command=self.reset_candidates
         ).pack(pady=5)
 
         ttk.Button(
-            self.root,
-            text="⚠ 清空中獎名單（測試用）",
+            self.root, text="⚠ 清空中獎名單（測試用）",
             command=self.reset_lottery_results
         ).place(x=650, y=260, width=200)
 
         # 中獎結果
-        result_frame = ttk.LabelFrame(self.root, text="中獎結果")
-        result_frame.place(x=20, y=300, width=830, height=230)
+        result = ttk.LabelFrame(self.root, text="中獎結果")
+        result.place(x=20, y=300, width=830, height=230)
 
         self.result_listbox = tk.Listbox(
-            result_frame,
+            result,
             font=("Arial", 14),
             bg="black",
             fg="white",
@@ -124,18 +114,16 @@ class MainWindow:
 
         # 狀態列
         self.status_label = ttk.Label(
-            self.root,
-            text="系統就緒",
-            relief=tk.SUNKEN,
-            anchor=tk.W
+            self.root, text="系統就緒",
+            relief=tk.SUNKEN, anchor=tk.W
         )
         self.status_label.place(x=0, y=570, width=900)
 
     # ==================================================
-    # 狀態控制
+    # 狀態同步
     # ==================================================
-    def _set_state(self, new_state: LotteryState):
-        self.state = new_state
+    def _set_state(self, state: LotteryState):
+        self.state = state
         self._sync_ui_with_state()
 
     def _sync_ui_with_state(self):
@@ -163,7 +151,7 @@ class MainWindow:
             self.next_btn.state(["!disabled"])
             self.pause_btn.state(["disabled"])
             self.history_btn.state(["disabled"])
-            self.status_label.config(text="請按『繼續下一個獎項』")
+            self.status_label.config(text="請繼續下一個獎項")
 
         elif self.state == LotteryState.FINISHED:
             self._unlock_ui()
@@ -199,7 +187,60 @@ class MainWindow:
 
     def _start_next_prize(self):
         prize = self._lottery_results[self._current_prize_index]
+        winners = prize.get("winners", [])
 
+        # === 特別獎 → 輪盤 ===
+        if prize.get("is_special") and winners:
+            SpecialWheelWindow(
+                self.root,
+                items=[w["name"] for w in winners],
+                # on_finish=self._after_special_wheel
+                on_finish=lambda winner, p=prize: self._after_special_wheel(p, winner)
+            )
+            return
+
+        # === 一般獎 ===
+        self._animation_lines = []
+        self._animation_index = 0
+
+        tag = "🎯 特別獎" if prize.get("is_special") else "一般獎"
+        self._animation_lines.append(f"=== {prize['prize']}（{tag}）===")
+
+        if not winners:
+            self._animation_lines.append("無中獎者")
+        else:
+            for w in winners:
+                self._animation_lines.append(
+                    f"{w['name']}（{w['employee_no']}）"
+                )
+
+        self._show_next_line()
+
+
+    def _after_special_wheel(self, prize, winner_name):
+        """
+        特別獎輪盤結束後
+        """
+
+        self._animation_lines = []
+        self._animation_index = 0
+
+        self._animation_lines.append(
+            f"=== {prize['prize']}（🎯 特別獎）==="
+        )
+
+        # ✅ 只顯示輪盤選中的那一位
+        for w in prize.get("winners", []):
+            if w["name"] == winner_name:
+                self._animation_lines.append(
+                    f"{w['name']}（{w['employee_no']}）"
+                )
+                break
+
+        self._show_next_line()
+
+
+    def _prepare_animation(self, prize):
         self._animation_lines = []
         self._animation_index = 0
 
@@ -211,7 +252,9 @@ class MainWindow:
             self._animation_lines.append("無中獎者")
         else:
             for w in winners:
-                self._animation_lines.append(f"{w['name']}（{w['employee_no']}）")
+                self._animation_lines.append(
+                    f"{w['name']}（{w['employee_no']}）"
+                )
 
         self._show_next_line()
 
@@ -230,6 +273,7 @@ class MainWindow:
 
         line = self._animation_lines[self._animation_index]
         idx = self.result_listbox.size()
+
         self.result_listbox.insert(tk.END, line)
         self.result_listbox.see(tk.END)
 
@@ -239,8 +283,6 @@ class MainWindow:
         )
 
         self._play_sound()
-        self.result_listbox.itemconfig(idx, bg="#333333")
-        self.root.after(300, lambda i=idx: self.result_listbox.itemconfig(i, bg="black"))
 
         self._animation_index += 1
         self._after_id = self.root.after(500, self._show_next_line)
@@ -249,7 +291,6 @@ class MainWindow:
         if self.state == LotteryState.RUNNING:
             if self._after_id:
                 self.root.after_cancel(self._after_id)
-                self._after_id = None
             self._set_state(LotteryState.PAUSED)
 
         elif self.state == LotteryState.PAUSED:
@@ -264,7 +305,7 @@ class MainWindow:
         if self.state not in (LotteryState.IDLE, LotteryState.FINISHED):
             messagebox.showwarning(
                 "操作受限",
-                "僅能在『尚未開始』或『抽籤完成』狀態下查看中獎紀錄"
+                "僅能在尚未開始或抽籤完成後查看"
             )
             return
         HistoryWindow(self.root)
@@ -278,16 +319,16 @@ class MainWindow:
             messagebox.showinfo("完成", f"已重設 {count} 筆")
 
     def reset_lottery_results(self):
-        if not messagebox.askyesno("⚠ 警告", "確定清空所有抽獎資料？"):
+        if not messagebox.askyesno("警告", "確定清空所有抽獎資料？"):
             return
         AdminService().reset_lottery_data()
-        self._reset_state()
+        self._reset_all()
         messagebox.showinfo("完成", "抽獎資料已清空")
 
-    def _reset_state(self):
-        self._lottery_results = []
+    def _reset_all(self):
+        self._lottery_results.clear()
         self._current_prize_index = 0
-        self._animation_lines = []
+        self._animation_lines.clear()
         self._animation_index = 0
         self.result_listbox.delete(0, tk.END)
         self._set_state(LotteryState.IDLE)
