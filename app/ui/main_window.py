@@ -11,18 +11,7 @@ from app.ui.history_window import HistoryWindow
 from app.ui.participants_window import ParticipantsWindow
 from app.ui.prizes_window import PrizesWindow
 from app.ui.special_wheel_window import SpecialWheelWindow
-
-
-# ==================================================
-# 狀態機
-# ==================================================
-class LotteryState(Enum):
-    IDLE = auto()
-    RUNNING = auto()
-    PAUSED = auto()
-    WAIT_NEXT = auto()
-    FINISHED = auto()
-
+from app.core.lottery_state_machine import LotteryStateMachine, LotteryState
 
 # ==================================================
 # 主視窗
@@ -35,7 +24,7 @@ class MainWindow:
         self.root.resizable(False, False)
 
         # 狀態
-        self.state = LotteryState.IDLE
+        self.sm = LotteryStateMachine()
         self._after_id = None
 
         # 抽籤資料
@@ -122,38 +111,38 @@ class MainWindow:
     # ==================================================
     # 狀態同步
     # ==================================================
-    def _set_state(self, state: LotteryState):
-        self.state = state
+    def _refresh_ui(self):
         self._sync_ui_with_state()
 
+
     def _sync_ui_with_state(self):
-        if self.state == LotteryState.IDLE:
+        if self.sm.state == LotteryState.IDLE:
             self._unlock_ui()
             self.next_btn.state(["disabled"])
             self.pause_btn.state(["disabled"])
             self.history_btn.state(["!disabled"])
             self.status_label.config(text="系統就緒")
 
-        elif self.state == LotteryState.RUNNING:
+        elif self.sm.state == LotteryState.RUNNING:
             self._lock_ui()
             self.pause_btn.state(["!disabled"])
             self.history_btn.state(["disabled"])
             self.status_label.config(text="抽籤中...")
 
-        elif self.state == LotteryState.PAUSED:
+        elif self.sm.state == LotteryState.PAUSED:
             self._unlock_ui()
             self.pause_btn.config(text="繼續")
             self.history_btn.state(["disabled"])
             self.status_label.config(text="⏸ 已暫停")
 
-        elif self.state == LotteryState.WAIT_NEXT:
+        elif self.sm.state == LotteryState.WAIT_NEXT:
             self._unlock_ui()
             self.next_btn.state(["!disabled"])
             self.pause_btn.state(["disabled"])
             self.history_btn.state(["disabled"])
             self.status_label.config(text="請繼續下一個獎項")
 
-        elif self.state == LotteryState.FINISHED:
+        elif self.sm.state == LotteryState.FINISHED:
             self._unlock_ui()
             self.next_btn.state(["disabled"])
             self.pause_btn.state(["disabled"])
@@ -164,26 +153,35 @@ class MainWindow:
     # 抽籤流程
     # ==================================================
     def start_lottery(self):
-        if self.state != LotteryState.IDLE:
+        try:
+            self.sm.start()
+        except ValueError:
             return
 
         self._lottery_results = LotteryService().run_lottery()
         if not self._lottery_results:
             messagebox.showwarning("無資料", "目前沒有可抽的獎項")
+            self.sm.reset()
+            self._refresh_ui()
             return
 
         self._current_prize_index = 0
         self.result_listbox.delete(0, tk.END)
 
-        self._set_state(LotteryState.RUNNING)
+        self._refresh_ui()
         self._start_next_prize()
+
 
     def next_prize(self):
-        if self.state != LotteryState.WAIT_NEXT:
+        try:
+            self.sm.next_round()
+        except ValueError:
             return
 
-        self._set_state(LotteryState.RUNNING)
+        self._refresh_ui()
         self._start_next_prize()
+
+
 
     def _start_next_prize(self):
         prize = self._lottery_results[self._current_prize_index]
@@ -259,16 +257,18 @@ class MainWindow:
         self._show_next_line()
 
     def _show_next_line(self):
-        if self.state == LotteryState.PAUSED:
+        if self.sm.state == LotteryState.PAUSED:
             return
 
         if self._animation_index >= len(self._animation_lines):
             self._current_prize_index += 1
             if self._current_prize_index >= len(self._lottery_results):
-                self._set_state(LotteryState.FINISHED)
+                self.sm.finish()
+                self._refresh_ui()
                 messagebox.showinfo("完成", "所有獎項已抽完")
             else:
-                self._set_state(LotteryState.WAIT_NEXT)
+                self.sm.wait_next()
+                self._refresh_ui()
             return
 
         line = self._animation_lines[self._animation_index]
@@ -288,21 +288,25 @@ class MainWindow:
         self._after_id = self.root.after(500, self._show_next_line)
 
     def toggle_pause(self):
-        if self.state == LotteryState.RUNNING:
-            if self._after_id:
-                self.root.after_cancel(self._after_id)
-            self._set_state(LotteryState.PAUSED)
+        try:
+            if self.sm.state == LotteryState.RUNNING:
+                self.sm.pause()
+            elif self.sm.state == LotteryState.PAUSED:
+                self.sm.resume()
+        except ValueError:
+            return
 
-        elif self.state == LotteryState.PAUSED:
-            self.pause_btn.config(text="暫停")
-            self._set_state(LotteryState.RUNNING)
+        self._refresh_ui()
+
+        if self.sm.state == LotteryState.RUNNING:
             self._show_next_line()
+
 
     # ==================================================
     # 其他功能
     # ==================================================
     def open_history(self):
-        if self.state not in (LotteryState.IDLE, LotteryState.FINISHED):
+        if self.sm.state not in (LotteryState.IDLE, LotteryState.FINISHED):
             messagebox.showwarning(
                 "操作受限",
                 "僅能在尚未開始或抽籤完成後查看"
@@ -331,7 +335,8 @@ class MainWindow:
         self._animation_lines.clear()
         self._animation_index = 0
         self.result_listbox.delete(0, tk.END)
-        self._set_state(LotteryState.IDLE)
+        self.sm.reset()
+        self._refresh_ui()
 
     # ==================================================
     # UI Lock
