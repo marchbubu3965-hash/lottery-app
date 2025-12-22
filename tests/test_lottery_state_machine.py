@@ -46,7 +46,7 @@ def test_wait_next_flow():
     sm.wait_next()
     assert sm.state == LotteryState.WAIT_NEXT
 
-    sm.next_prize()
+    sm.next_round()
     assert sm.state == LotteryState.RUNNING
 
 

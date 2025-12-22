@@ -37,11 +37,6 @@ class LotteryStateMachine:
             raise InvalidStateTransition("只能從 RUNNING 進入 WAIT_NEXT")
         self.state = LotteryState.WAIT_NEXT
 
-    def next_prize(self):
-        if self.state != LotteryState.WAIT_NEXT:
-            raise InvalidStateTransition("只能在 WAIT_NEXT 繼續")
-        self.state = LotteryState.RUNNING
-
     def finish(self):
         if self.state not in (LotteryState.RUNNING, LotteryState.WAIT_NEXT):
             raise InvalidStateTransition("只能在抽籤過程中完成")
