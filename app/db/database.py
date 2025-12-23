@@ -1,4 +1,5 @@
 import sqlite3
+import sys
 from pathlib import Path
 
 # -----------------------------
@@ -8,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "lottery.db"
 
-SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
+
 
 
 # -----------------------------
@@ -31,6 +32,7 @@ def init_db():
     """
     若資料庫或資料表不存在，則建立
     """
+    SCHEMA_PATH = resource_path("schema.sql")
     DATA_DIR.mkdir(exist_ok=True)
 
     conn = get_connection()
@@ -94,3 +96,11 @@ def setup_database():
     """
     init_db()
     init_default_admin()
+
+def resource_path(relative_path: str) -> Path:
+    """
+    PyInstaller / 開發環境 通用資源路徑
+    """
+    if hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / relative_path
+    return Path(__file__).resolve().parent.parent.parent / relative_path

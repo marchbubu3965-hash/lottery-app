@@ -1,0 +1,3 @@
+([('LotteryApp',
+   '/Users/minnielin/lottery_app/dist/LotteryApp',
+   'EXECUTABLE')],)
