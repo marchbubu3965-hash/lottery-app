@@ -2,9 +2,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from enum import Enum, auto
 import sys
+from pathlib import Path
 
 from app.services.lottery_service import LotteryService
-from app.services.participant_service import ParticipantService
 from app.services.admin_service import AdminService
 
 from app.ui.history_window import HistoryWindow
@@ -35,6 +35,25 @@ class MainWindow:
         self._animation_lines = []
         self._animation_index = 0
 
+        # 背景圖
+        base_dir = Path(__file__).resolve().parents[2]
+        bg_path = base_dir / "assets" / "images" / "main_background.png"
+
+        self.bg_image = tk.PhotoImage(file=str(bg_path))
+        self.bg_label = tk.Label(self.root, image=self.bg_image)
+        self.bg_label.place(x=-65, y=-130, width=900, height=600)
+
+        # === 公司 Logo（純視覺）===
+        logo_path = base_dir / "assets" / "icons" / "main_logo.png"
+        self.logo_image = tk.PhotoImage(file=str(logo_path))
+        self.logo_label = tk.Label(
+            self.root,
+            image=self.logo_image,
+            bd=0,
+            highlightthickness=0
+        )
+        self.logo_label.place(x=20, y=10)
+
         self._build_ui()
         self._sync_ui_with_state()
 
@@ -42,9 +61,14 @@ class MainWindow:
     # UI 建立
     # ==================================================
     def _build_ui(self):
+        # 背景圖永遠在最底層
+        self.bg_label.lower()
+        self.logo_label.lift()
+
+
         # 左側管理
         left = ttk.LabelFrame(self.root, text="管理設定")
-        left.place(x=20, y=20, width=400, height=260)
+        left.place(x=20, y=120, width=200, height=160)
 
         ttk.Button(left, text="獎項管理", command=self.open_prizes)\
             .pack(pady=15)
@@ -55,7 +79,7 @@ class MainWindow:
 
         # 中央控制
         center = ttk.LabelFrame(self.root, text="抽籤控制")
-        center.place(x=450, y=20, width=400, height=260)
+        center.place(x=550, y=40, width=300, height=240)
 
         self.start_btn = ttk.Button(
             center, text="開始抽籤", width=25, command=self.start_lottery
@@ -78,18 +102,13 @@ class MainWindow:
         self.history_btn.pack(pady=10)
 
         ttk.Button(
-            center, text="重設名單（特別獎）", width=25,
-            command=self.reset_candidates
-        ).pack(pady=5)
-
-        ttk.Button(
             self.root, text="⚠ 清空中獎名單（測試用）",
             command=self.reset_lottery_results
-        ).place(x=650, y=260, width=200)
+        ).place(x=650, y=240, width=200)
 
         # 中獎結果
         result = ttk.LabelFrame(self.root, text="中獎結果")
-        result.place(x=20, y=300, width=830, height=230)
+        result.place(x=20, y=340, width=830, height=220)
 
         self.result_listbox = tk.Listbox(
             result,
@@ -316,11 +335,6 @@ class MainWindow:
 
     def open_prizes(self):
         PrizesWindow(self.root)
-
-    def reset_candidates(self):
-        if messagebox.askyesno("確認", "確定重設名單？"):
-            count = ParticipantService().reset_all_participants()
-            messagebox.showinfo("完成", f"已重設 {count} 筆")
 
     def reset_lottery_results(self):
         if not messagebox.askyesno("警告", "確定清空所有抽獎資料？"):
