@@ -13,6 +13,11 @@ from app.ui.prizes_window import PrizesWindow
 from app.ui.special_wheel_window import SpecialWheelWindow
 from app.core.lottery_state_machine import LotteryStateMachine, LotteryState
 
+def resource_path(relative_path: str) -> Path:
+    if hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / relative_path
+    return Path(__file__).resolve().parents[2] / relative_path
+
 # ==================================================
 # 主視窗
 # ==================================================
@@ -35,16 +40,12 @@ class MainWindow:
         self._animation_lines = []
         self._animation_index = 0
 
-        # 背景圖
-        base_dir = Path(__file__).resolve().parents[2]
-        bg_path = base_dir / "assets" / "images" / "main_background.png"
-
+        bg_path = resource_path("assets/images/main_background.png")
         self.bg_image = tk.PhotoImage(file=str(bg_path))
         self.bg_label = tk.Label(self.root, image=self.bg_image)
         self.bg_label.place(x=-65, y=-130, width=900, height=600)
 
-        # === 公司 Logo（純視覺）===
-        logo_path = base_dir / "assets" / "icons" / "main_logo.png"
+        logo_path = resource_path("assets/icons/main_logo.png")
         self.logo_image = tk.PhotoImage(file=str(logo_path))
         self.logo_label = tk.Label(
             self.root,
@@ -53,6 +54,7 @@ class MainWindow:
             highlightthickness=0
         )
         self.logo_label.place(x=20, y=10)
+
 
         self._build_ui()
         self._sync_ui_with_state()
