@@ -13,3 +13,8 @@ venv/
 # IDE
 .idea/
 .vscode/
+
+dist/
+build/
+*.spec
+
