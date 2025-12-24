@@ -14,20 +14,20 @@
 
 ## 專案結構
 
-lottery_app/
-├─ app/
-│ ├─ main.py # 程式入口
-│ ├─ db/
-│ │ ├─ database.py # 資料庫操作
-│ │ └─ schema.sql # 資料表 schema
-│ ├─ ui/ # 各視窗 UI
-│ ├─ services/ # 商業邏輯
-│ └─ core/ # 狀態機、核心邏輯
-├─ assets/
-│ ├─ icons/ # 公司 Logo
-│ └─ images/ # 背景、介面資源
-├─ dist/ # PyInstaller 打包後的產物
-└─ README.md
+    lottery_app/
+    ├─ app/
+    │ ├─ main.py # 程式入口
+    │ ├─ db/
+    │ │ ├─ database.py # 資料庫操作
+    │ │ └─ schema.sql # 資料表 schema
+    │ ├─ ui/ # 各視窗 UI
+    │ ├─ services/ # 商業邏輯
+    │ └─ core/ # 狀態機、核心邏輯
+    ├─ assets/
+    │ ├─ icons/ # 公司 Logo
+    │ └─ images/ # 背景、介面資源
+    ├─ dist/ # PyInstaller 打包後的產物
+    └─ README.md
 
 
 ---
@@ -67,7 +67,7 @@ lottery_app/
     --add-data "app/db/schema.sql:db" \
     --add-data "assets:assets"
 
-    
+
 - 使用說明
 
     登入：
